@@ -4,3 +4,41 @@ rmLike <- function(expression)
 	print(ls(pattern=expression))
 	rm(list=ls(pattern=expression))
 }
+
+histogramBreaksSturges <- function(x)
+{
+	xMin <- min(x)
+	xMax <- max(x)
+	n <- length(x)
+	nBins <- ceiling(log2(n)+1)
+	binWidth <- (xMax-xMin)/nBins
+	bins <- cbind(xMin + binWidth*(0:(nBins-1)),xMin+binWidth*(1:nBins),xMin+binWidth*(0:(nBins-1) + 0.5))
+	colnames(bins) <- c("xMin","xMax","xMid")
+	list(xMin=xMin,xMax=xMax,n=n,nBins=nBins,bins=bins)
+}
+
+betaSuccessProbDistribution <- function(successes=0, failures=0, step=0.01) 
+{
+	dbeta(seq(0,1,step),shape1=successes+1,shape2=failures+1)
+}
+
+betaSuccessQuantiles <- function(p=c(0.025,0.975),successes=0,failures=0)
+{
+	qbeta(p,shape1=successes+1,shape2=failures+1)
+}
+
+betaSuccessMean <- function(successes=0,failures=0)
+{
+	successes+1/(successes+failures+2)
+}
+
+betaSuccessMode <- function(successes=0,failures=0)
+{
+	if (successes + failures == 0) { stop("No mode for b(0,0)")}
+	successes/(successes+failures)
+}
+
+betaSuccessMedian <- function(successes=0,failures=0)
+{
+	betaSuccessQuantiles(p=0.5,successes,failures)
+}

@@ -1,4 +1,5 @@
 library(sp)
+library(raster)
 dist <- function(x1,y1,x2,y2) {sqrt((x1-x2)^2+(y1-y2)^2)}
 pointInPolygon <- function(x,y,plgX)
 {
@@ -148,7 +149,28 @@ valuesOfRasterWithinPolygon <- function(rstX,plgX,inside=TRUE)
 	cbind(x,z)
 }
 
-confirmSameGrid <- function(rstX,rstY)
+valuesOfRasterAtPoints <- function(rstX,smpPts)
+{
+	matX <- as.matrix(rstX@data)
+	dim(matX) <- rstX@grid@cells.dim
+	smpPts[,1] <- floor((smpPts[,1] - rstX@bbox[1,1])/rstX@grid@cellsize[1]) + 1
+	smpPts[,2] <- floor((smpPts[,2] - rstX@bbox[2,1])/rstX@grid@cellsize[2]) + 1
+	n <- dim(smpPts)[1]
+	result <- numeric(n)
+	for (i in 1:n)
+	{
+		if (smpPts[i,1]>0 & smpPts[i,2]>0 & smpPts[i,1]<=dim(matX)[1] & smpPts[i,2]<=dim(matX)[2])
+		{
+			result[i] <- matX[smpPts[i,1],smpPts[i,2]]
+		} else {
+			result[i] <- NA
+			print (paste(smpPts[i,]," is outside ",rstX@bbox))
+		}
+	}
+	result
+}
+
+confirmSameGrid <- function(rstX,rstY,sampleProp=0.1)
 {
 	# This function takes two parameters, both of type SpatialGridDataFrame {sp}.  It checks that both grids have the same
 	# bounding boxes, projection strings, first and last grid coordinates, as well as the same corresponding grid coordinates
@@ -164,7 +186,7 @@ confirmSameGrid <- function(rstX,rstY)
 	if (!(coordinates(rstX)[1,2]==coordinates(rstY)[1,2])) { return(-5) }
 	if (!(coordinates(rstX)[dim(coordinates(rstX))[1],1]==coordinates(rstY)[dim(coordinates(rstY))[1],1])) { return(-6) }
 	if (!(coordinates(rstX)[dim(coordinates(rstX))[1],2]==coordinates(rstY)[dim(coordinates(rstY))[1],2])) { return(-7) }
-	m <- ceiling(dim(coordinates(rstX))[1]*.1)
+	m <- ceiling(dim(coordinates(rstX))[1]*sampleProp)
 	smpPts <- sample(dim(coordinates(rstX))[1],m)
 	for (i in 1:m)
 	{
@@ -194,18 +216,6 @@ timeSequenceGrids <- function(gridSeries,dateSeries)
 	result
 }
 
-histogramBreaksSturges <- function(x)
-{
-	xMin <- min(x)
-	xMax <- max(x)
-	n <- length(x)
-	nBins <- ceiling(log2(n)+1)
-	binWidth <- (xMax-xMin)/nBins
-	bins <- cbind(xMin + binWidth*(0:(nBins-1)),xMin+binWidth*(1:nBins),xMin+binWidth*(0:(nBins-1) + 0.5))
-	colnames(bins) <- c("xMin","xMax","xMid")
-	list(xMin=xMin,xMax=xMax,n=n,nBins=nBins,bins=bins)
-}
-
 addPolygon <- function(x,plgX,plgName)
 {
 	n <- dim(x)[1]
@@ -231,15 +241,20 @@ analysisFirstOrder <- function(x,params,polys)
 	names(analyses) <- colnames(x[,polys])
 	for (j in 1:length(polys))
 	{
-		buildTable <- matrix(nrow=0,ncol=2)
+		buildTable <- matrix(nrow=0,ncol=7)
+		colnames(buildTable) <- c("Successes","Failures","Pmean","P95-","P95+","P99-","P99+")
 		for (i in 1:length(params))
 		{
-			buildTable <- rbind(rowTable,c(dim(x[x[,params[i]]>=header[[i]]$xMin & x[,params[i]]<header[[i]]$xMax & x[,polys[j]]==1,])[1],dim(x[x[,params[i]]>=header[[i]]$xMin & x[,params[i]]<header[[i]]$xMax & x[,polys[j]]==0,])[1]))
+			s <- dim(x[x[,params[i]]>=header[[i]]$xMin & x[,params[i]]<header[[i]]$xMax & x[,polys[j]]==1,])[1]
+			f <- dim(x[x[,params[i]]>=header[[i]]$xMin & x[,params[i]]<header[[i]]$xMax & x[,polys[j]]==0,])[1]
+			buildTable <- rbind(rowTable,c(s,f,betaSuccessMean(s,f),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),s,f)))
 		}
 		analyses[[j]] <- buildTable
 	}
 	list(header=header,analyses=analyses)
 }
+
+
 
 
 
