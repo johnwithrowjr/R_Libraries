@@ -1,0 +1,43 @@
+library(sp)
+library(rgdal)
+source("C:\\Users\\johnwithrow\\Desktop\\Projects\\R_Libraries\\spatialRoutinesInR.R")
+bhnf <- readOGR("D:\\Projects\\GIS_Projects\\20160310 ORS BHNF\\BHNF.shp","BHNF")
+samplePts <- generateSamplePointsInPolygonWithMinDistance(1000,bhnf,2500,100000)
+ZScore2011 <- readGDAL("D:\\Projects\\GIS_Projects\\20160310 ORS BHNF\\BHNF_bYs_2006_2009_aYs_2010_2011_jDs_200_275_ZScore_Analysis2Zs_mean.tif")
+samplePts <- cbind(samplePts,valuesOfRasterAtPoints(ZScore2011,samplePts))
+rm(ZScore2011)
+bhnfIDS2011 <- readOGR("D:\\Projects\\GIS_Projects\\20160310 ORS BHNF\\IDS2011.shp","IDS2011")
+samplePts <- addPolygon(samplePts,bhnfIDS2011,"IDS2011")
+rm(bhnfIDS2011)
+analysis1 <- analysisFirstOrder(samplePts,3,4)
+
+plot(analysis1$analyses[[1]][,1],analysis1$analyses[[1]][,5],ylim=c(0,1))
+> lines(analysis1$analyses[[1]][,1],analysis1$analyses[[1]][,5])
+> lines(analysis1$analyses[[1]][,1],analysis1$analyses[[1]][,6],lty=3)
+> lines(analysis1$analyses[[1]][,1],analysis1$analyses[[1]][,7],lty=3)
+
+bhnf <- readOGR("D:\\Projects\\GIS_Projects\\20160310 ORS BHNF\\BHNF.shp","BHNF")
+samplePts2 <- generateSamplePointsInPolygonWithMinDistance(1000,bhnf,2500,100000)
+ZScore2012 <- readGDAL("D:\\Projects\\GIS_Projects\\20160310 ORS BHNF\\BHNF_bYs_2007_2010_aYs_2011_2012_jDs_200_275_ZScore_Analysis2Zs_mean.tif")
+samplePts2 <- cbind(samplePts,valuesOfRasterAtPoints(ZScore2012,samplePts))
+rm(ZScore2012)
+bhnfIDS2012 <- readOGR("D:\\Projects\\GIS_Projects\\20160310 ORS BHNF\\IDS2012.shp","IDS2012")
+samplePts2 <- addPolygon(samplePts2,bhnfIDS2012,"IDS2012")
+rm(bhnfIDS2012)
+analysis2 <- analysisFirstOrder(samplePts2,3,4)
+
+fullAnalysis <- function(plgOuterFn,plgOuterFnShort,numSamplePoints,minDistance,rstXFn,plgDisturbanceFn,plgDisturbanceFnShort)
+{
+	plgOuter <- readOGR(plgOuterFn,plgOuterFnShort)
+	samplePts <- generateSamplePointsInPolygonWithMinDistance(numSamplePoints,plgOuter,minDistance,100000)
+	rstX <- readGDAL(rstXFn)
+	samplePts <- cbind(samplePts,valuesOfRasterAtPoints(rstX,samplePts))
+	rm(rstX)
+	plgDisturbance <- readOGR(plgDisturbanceFn,plgDisturbanceFnShort)
+	samplePts <- addPolygon(samplePts,plgDisturbance,plgDisturbanceFnShort)
+	rm(plgDisturbance)
+	sample
+	analysisFirstOrder(samplePts,3,4)
+}
+
+fullAnalysis("D:\\Projects\\GIS_Projects\\20160310 ORS BHNF\\BHNF.shp","BHNF",1000,2500,"D:\\Projects\\GIS_Projects\\20160310 ORS BHNF\\BHNF_bYs_2007_2010_aYs_2011_2012_jDs_200_275_ZScore_Analysis2Zs_mean.tif","D:\\Projects\\GIS_Projects\\20160310 ORS BHNF\\IDS2012.shp","IDS2012")

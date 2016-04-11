@@ -235,19 +235,38 @@ analysisFirstOrder <- function(x,params,polys)
 	names(header) <- colnames(x[,params])
 	for (i in 1:length(header))
 	{
-		header[[i]] <- histogramBreaksSturges(x[params[i]])
+		header[[i]] <- histogramBreaksSturges(x[,params[i]])
 	}
 	analyses <- list(length(polys))
 	names(analyses) <- colnames(x[,polys])
 	for (j in 1:length(polys))
 	{
-		buildTable <- matrix(nrow=0,ncol=7)
-		colnames(buildTable) <- c("Successes","Failures","Pmean","P95-","P95+","P99-","P99+")
+		buildTable <- matrix(nrow=0,ncol=9)
+		colnames(buildTable) <- c("XMid","Successes","Failures","PmaxL","Pmean","P95-","P95+","P99-","P99+")
 		for (i in 1:length(params))
 		{
-			s <- dim(x[x[,params[i]]>=header[[i]]$xMin & x[,params[i]]<header[[i]]$xMax & x[,polys[j]]==1,])[1]
-			f <- dim(x[x[,params[i]]>=header[[i]]$xMin & x[,params[i]]<header[[i]]$xMax & x[,polys[j]]==0,])[1]
-			buildTable <- rbind(rowTable,c(s,f,betaSuccessMean(s,f),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),s,f)))
+			for (k in 1:header[[i]]$nBins)
+			{
+				#print(x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==1),])
+				#print(is.matrix(x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==1),]))
+				#print(dim(as.matrix(x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==1),])))
+				ss <- x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==1),]
+				if (is.matrix(ss))
+				{
+					s <- dim(ss)[1]
+				} else {
+					s <- 1
+				}
+				ff <- x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==0),]
+				if (is.matrix(ff))
+				{
+					f <- dim(ff)[1]
+				} else {
+					f <- 1
+				}
+				#print(paste(s,f,sep=" "))
+				buildTable <- rbind(buildTable,c(header[[i]]$bins[k,3],s,f,betaSuccessMode(s,f),betaSuccessMean(s,f),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),s,f)))
+			}
 		}
 		analyses[[j]] <- buildTable
 	}

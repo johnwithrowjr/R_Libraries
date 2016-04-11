@@ -29,7 +29,7 @@ betaSuccessQuantiles <- function(p=c(0.025,0.975),successes=0,failures=0)
 
 betaSuccessMean <- function(successes=0,failures=0)
 {
-	successes+1/(successes+failures+2)
+	(successes+1)/(successes+failures+2)
 }
 
 betaSuccessMode <- function(successes=0,failures=0)
