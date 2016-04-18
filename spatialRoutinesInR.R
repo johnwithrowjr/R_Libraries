@@ -51,12 +51,45 @@ generateSamplePointsInPolygonWithMinDistance <- function(numPts,outerPolygon,min
 	result
 }
 
-generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,plgLocations,plgOuter,rstGuide,propInLocations=0.5,minDistance=0,maxIter=10000)
+generateSamplePointsWithORSBalanceAndMinDistance <- function(numPtsTotal,rstORS,plgOuter,breaks,minDistance=0,seed=NULL)
 {
-	print("Creating Rasterized Polygons...")
-	rstLocations <- raster(rstGuide,layer=1,values=FALSE)
-	rstLocations <- rasterize(plgLocations,rstLocations,colnames(plgLocations@data)[1])
-	rstLocations <- as(rstLocations,"SpatialGridDataFrame")
+  if (!is.null(seed)) {set.seed(seed)}
+  dfORSPts <- cbind(coordinates(rstORS),rstORS@data[[1]])
+  colnames(dfORSPts) <- c("x","y","z")
+  dfORSPts <- dfORSPts[!is.na(dfORSPts[,3]),]
+  m <- length(breaks) - 1
+  result <- matrix(nrow=0,ncol=4)
+  numPts <- ceiling(numPtsTotal/m)
+  for (i in 1:m)
+  {
+    dfORSPtsTemp <- dfORSPts[dfORSpts[,3]>=breaks[i] & dfORSPts[,3] < breaks[i+1],]
+    totalrows <- dim(dfORSPtsTemp)[1]
+    dfORSPtsTemp <- dfORSPtsTemp[sample(totalrows,totalrows),]
+    j <- 0
+    resultTemp <- matrix(nrow=0,ncol=4)
+    while (j < numPts & k < totalrows)
+    {
+      isolated <- TRUE
+      if (j > 0)
+      {
+        for (p in 1:j)
+        {
+          if (dist(resultTemp[p,1],resultTemp[p,2],dfORSPtsTemp[k,1],dfORSPtsTemp[k,2])<minDistance) { isolated <- FALSE }
+        }
+      }
+      if (isolated) {resultTemp <- rbind(resultTemp,cbind(dfORSPtsTemp[k,],m))}
+      k <- k + 1
+    }
+    result <- rbind(result,resultTemp)
+  }
+  result
+}
+
+generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,rstLocations,plgOuter,rstGuide,propInLocations=0.5,minDistance=0,maxIter=10000)
+{
+	#rstTemp <- as(calc(stack(rstLocations,as(rstGuide,"RasterLayer")),fun=function(x){x[1]*x[2]}),"SpatialGridDataFrame")
+	#rstGuide <- as(rstGuide,"SpatialGridDataFrame")
+	#dfGuide <- rstGuide@data[[1]][!is.na(rstGuide@data[[1]])]
 	print("Converting to a List of Points...")
 	dfLocationsPts <- cbind(coordinates(rstLocations),!is.na(rstLocations@data[[1]]))
 	#print(dfLocations)
@@ -65,7 +98,7 @@ generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,p
 	print("Randomizing...")
 	dfLocationsPtsInside <- dfLocationsPtsInside[sample(1:dim(dfLocationsPtsInside)[1]),]
 	dfLocationsPtsOutside <- dfLocationsPtsOutside[sample(1:dim(dfLocationsPtsOutside)[1]),]
-	pI <- (dim(dfLocationsPtsInside)[1])/(dim(dfLocationsPtsInside)[1]+dim(dfLocationsPtsOutside)[1])
+	#pI <- (dim(dfLocationsPtsInside)[1])/(dim(dfLocationsPtsInside)[1]+dim(dfLocationsPtsOutside)[1])
 	samplepoints.x <- numeric(0)
 	samplepoints.y <- numeric(0)
 	samplepoints.z <- numeric(0)
@@ -82,11 +115,14 @@ generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,p
 			isolated = TRUE
 			if (length(samplepoints.x) > 0)
 			{
-				for (i in 1:length(samplepoints.x))
+				if (minDistance > 0)
 				{
-					if (dist(x,y,samplepoints.x[i],samplepoints.y[i]) < minDistance)
+					for (i in 1:length(samplepoints.x))
 					{
-						isolated = FALSE
+						if (dist(x,y,samplepoints.x[i],samplepoints.y[i]) < minDistance)
+						{
+							isolated = FALSE
+						}
 					}
 				}
 			}
@@ -95,7 +131,7 @@ generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,p
 				samplepoints.x <- c(samplepoints.x,x)
 				samplepoints.y <- c(samplepoints.y,y)
 				samplepoints.z <- c(samplepoints.z,1)
-				print (paste("numIter = ",numIter,", numPts = ",length(samplepoints.x)," x=",x," y=",y,sep=""))
+				if (isDivisibleBy(length(samplepoints.x),100)) {print (paste("numIter = ",numIter,", numPts = ",length(samplepoints.x)," x=",x," y=",y,sep=""))}
 			}
 		}
 	}
@@ -112,11 +148,14 @@ generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,p
 			isolated = TRUE
 			if (length(samplepoints.x) > 0)
 			{
-				for (i in 1:length(samplepoints.x))
+				if (minDistance > 0)
 				{
-					if (dist(x,y,samplepoints.x[i],samplepoints.y[i]) < minDistance)
+					for (i in 1:length(samplepoints.x))
 					{
-						isolated = FALSE
+						if (dist(x,y,samplepoints.x[i],samplepoints.y[i]) < minDistance)
+						{
+							isolated = FALSE
+						}
 					}
 				}
 			}
@@ -125,13 +164,14 @@ generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,p
 				samplepoints.x <- c(samplepoints.x,x)
 				samplepoints.y <- c(samplepoints.y,y)
 				samplepoints.z <- c(samplepoints.z,0)
-				print (paste("numIter = ",numIter,", numPts = ",length(samplepoints.x)," x=",x," y=",y,sep=""))
+				if (isDivisibleBy(length(samplepoints.x),100)) {print (paste("numIter = ",numIter,", numPts = ",length(samplepoints.x)," x=",x," y=",y,sep=""))}
 			}
 		}
 	}
 	result <- cbind(samplepoints.x,samplepoints.y,samplepoints.z)
 	colnames(result) <- c("x","y","z")
-	list(pI=pI,result=result)
+	#pI <- (dim(dfLocationsPtsInside[,])[1])/(dim(dfLocationsPtsInside)[1]+dim(dfLocationsPtsOutside)[1])
+	result
 }
 
 sampleVariogramOfRaster <- function(rstX, maxDistance, numBreaks, maxIter = 10000)
@@ -300,23 +340,28 @@ addPolygon <- function(x,plgX,plgName)
 	result
 }
 
-analysisFirstOrder <- function(x,pI,rstX,params,polys)
+analysisFirstOrder <- function(x,rstX,rstLocations,params,polys)
 {
 	x <- x[complete.cases(x),]
 	header <- list(length(params))
-	names(header) <- colnames(x[,params])
-	for (i in 1:length(header))
-	{
-		header[[i]] <- histogramBreaksSturges(x[,params[i]])
-		pX[[i]] <- hist(rstX@data,breaks=c(header[[i]]$bins[1,1],header[[i]]$bins[,2]),plot=FALSE)$density
-	}
+	pI <- list(length(params))
+	pX <- list(length(params))
 	analyses <- list(length(polys))
 	samplesizes <- list(length(polys))
+	names(header) <- colnames(x[,params])
 	names(analyses) <- colnames(x[,polys])
+	for (i in 1:length(header))
+	{
+		#header[[i]] <- histogramBreaksSturges(rstX@data[!is.na(rstX@data)],length(x[,params[i]]))
+		header[[i]] <- histogramBreaksSturges(x[,params[i]],length(x[,params[i]]))
+		pX[[i]] <- hist(rstX@data[!is.na(rstX@data) & rstX@data>header[[i]]$xMin & rstX@data<header[[i]]$xMax],breaks=(c(header[[i]]$bins[1,1],header[[i]]$bins[,2])),plot=FALSE)$density
+		isWithinRange <- !is.na(rstX@data) & rstX@data>header[[i]]$xMin & rstX@data<header[[i]]$xMax
+		pI[[i]] <- length(rstLocations@data[!is.na(rstLocations@data) & isWithinRange]) / length(rstLocations@data[isWithinRange])
+	}
 	for (j in 1:length(polys))
 	{
-		buildTable <- matrix(nrow=0,ncol=9)
-		colnames(buildTable) <- c("XMid","Successes","Failures","PmaxL","Pmean","P95-","P95+","P99-","P99+")
+		buildTable <- matrix(nrow=0,ncol=16)
+		colnames(buildTable) <- c("XMid","Successes","Failures","PmaxL(I|X)","Pmean(I|X)","P95-(I|X)","P95+(I|X)","P99-(I|X)","P99+(I|X)","P(X)","PmaxL(X|I)","Pmean(X|I)","P95-(X|I)","P95+(X|I)","P99-(X|I)","P99+(X|I)")
 		for (i in 1:length(params))
 		{
 			for (k in 1:header[[i]]$nBins)
@@ -335,7 +380,8 @@ analysisFirstOrder <- function(x,pI,rstX,params,polys)
 				} else {
 					f <- 1
 				}
-				buildTable <- rbind(buildTable,c(header[[i]]$bins[k,3],s,f,betaSuccessMode(s,f),betaSuccessMean(s,f),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),s,f)))
+				#print(header[[i]]$bins[k,1])
+				buildTable <- rbind(buildTable,c(header[[i]]$bins[k,3],s,f,betaSuccessMode(s,f),betaSuccessMean(s,f),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),s,f),pX[[i]][k],betaSuccessMode(s,f)*pX[[i]][k]/pI[[i]],betaSuccessMean(s,f)*pX[[i]][k]/pI[[i]],betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),s,f)*pX[[i]][k]/pI[[i]]))
 			}
 		}
 		analyses[[j]] <- buildTable
@@ -368,6 +414,13 @@ fullAnalysis <- function(plgOuterFn,plgOuterFnShort,numSamplePoints,minDistance,
 	plgDisturbance <- readOGR(plgDisturbanceFn,plgDisturbanceFnShort)
 	print("Reading in Raster Layer...")
 	rstX <- readGDAL(rstXFn)
-	samplePts <- generateSamplePointsInIsolatedLocationsWithMinDistance(numSamplePoints,plgDisturbance,plgOuter,rstX,propInLocations,minDistance,100000)
-	analysisFirstOrder(samplePts$result,samplePts$pI,rstX,3,4)
+	rstX <- as(rstX,"SpatialGridDataFrame")
+	print("Creating Rasterized Polygons...")
+	rstDisturbance <- raster(rstX,layer=1,values=FALSE)
+	rstDisturbance <- rasterize(plgDisturbance,rstDisturbance,colnames(plgDisturbance@data)[1])
+	rstDisturbance <- as(rstDisturbance,"SpatialGridDataFrame")
+	samplePts <- generateSamplePointsInIsolatedLocationsWithMinDistance(numSamplePoints,rstDisturbance,plgOuter,rstX,propInLocations,minDistance,1000000)
+	samplePts <- cbind(samplePts,valuesOfRasterAtPoints(rstX,samplePts))
+	colnames(samplePts)[4] <- "rstX"
+ 	analysisFirstOrder(samplePts,rstX,rstDisturbance,4,3)
 }
