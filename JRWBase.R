@@ -49,6 +49,7 @@ betaSuccessMedian <- function(successes=0,failures=0)
 	betaSuccessQuantiles(p=0.5,successes,failures)
 }
 
+<<<<<<< HEAD
 isDivisibleBy <- function(x,y)
 {
 	x %% y == 0
@@ -70,6 +71,19 @@ observationsRequiredForBinomialDifferentiation <- function(p1,p2,alpha=0.05)
 			n <- n + 1 
 			print(paste(n,(1-pbinom(floor(pb*n),n,pa)),sep=" : "))
 		}
+=======
+observationsRequiredForBinomialDifferentiation <- function(p1,p2,alpha=0.05)
+{
+	if (p1==p2) { stop("Probabilities need to be different.") }
+	if (p1<0 | p1>1 | p2<0 | p2>1) { stop("Probabilities need to be between zero and one.") }
+	pa <- min(p1,p2)
+	pb <- max(p1,p2)
+	n <- 1
+	while ((1-pbinom(floor(pb*n),n,pa))>alpha) 
+	{ 
+		n <- n + 1 
+		print(paste(n,(1-pbinom(floor(pb*n),n,pa)),sep=" : "))
+>>>>>>> 3556c44c3bf7db11cb299cc3d4b03a6866f396b7
 	}
 	n
 }
