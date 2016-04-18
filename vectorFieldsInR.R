@@ -1,3 +1,8 @@
+plotVectorDivergence <- function(z)
+{
+	vectorField(atanc(z),mag(z),rep(1:dim(z)[2],dim(z)[1]),rep(1:dim(z)[1],each=dim(x)[2]))
+}
+
 createVectorDivergence <- function(rstX,rstY,betamax=-1)
 {
 	matX <- as.matrix(rstX@data)
@@ -27,6 +32,6 @@ createVectorDivergence <- function(rstX,rstY,betamax=-1)
 			}
 		}
 	}
-	vectorField()
+	plotVectorDivergence(z)
 	z
 }

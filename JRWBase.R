@@ -53,6 +53,12 @@ isDivisibleBy <- function(x,y)
 	x %% y == 0
 }
 
+mag <- function(x)
+{
+	if (!is.complex(x)) { stop("Argument is not complex.") }
+	sqrt(Im(x)^2+Re(x)^2)
+}
+
 observationsRequiredForBinomialDifferentiation <- function(p1,p2,alpha=0.05)
 {
 	if (p1<0 | p1>1 | p2<0 | p2>1) { stop("Probabilities need to be between zero and one.") }
