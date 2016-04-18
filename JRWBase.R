@@ -1,20 +1,7 @@
-rmLike <- function(expression)
+atanc <- function(x)
 {
-	print("Removing...")
-	print(ls(pattern=expression))
-	rm(list=ls(pattern=expression))
-}
-
-histogramBreaksSturges <- function(x,n)
-{
-	xMin <- min(x)
-	xMax <- max(x)
-	#n <- length(x)
-	nBins <- ceiling(log2(n)+1)
-	binWidth <- (xMax-xMin)/nBins
-	bins <- cbind(xMin + binWidth*(0:(nBins-1)),xMin+binWidth*(1:nBins),xMin+binWidth*(0:(nBins-1) + 0.5))
-	colnames(bins) <- c("xMin","xMax","xMid")
-	list(xMin=xMin,xMax=xMax,n=n,nBins=nBins,bins=bins)
+	if (!is.complex(x)) { stop("Argument is not complex.") }
+	atan2(Im(x),Re(x))
 }
 
 betaSuccessProbDistribution <- function(successes=0, failures=0, step=0.01) 
@@ -49,7 +36,18 @@ betaSuccessMedian <- function(successes=0,failures=0)
 	betaSuccessQuantiles(p=0.5,successes,failures)
 }
 
-<<<<<<< HEAD
+histogramBreaksSturges <- function(x,n)
+{
+	xMin <- min(x)
+	xMax <- max(x)
+	#n <- length(x)
+	nBins <- ceiling(log2(n)+1)
+	binWidth <- (xMax-xMin)/nBins
+	bins <- cbind(xMin + binWidth*(0:(nBins-1)),xMin+binWidth*(1:nBins),xMin+binWidth*(0:(nBins-1) + 0.5))
+	colnames(bins) <- c("xMin","xMax","xMid")
+	list(xMin=xMin,xMax=xMax,n=n,nBins=nBins,bins=bins)
+}
+
 isDivisibleBy <- function(x,y)
 {
 	x %% y == 0
@@ -57,7 +55,6 @@ isDivisibleBy <- function(x,y)
 
 observationsRequiredForBinomialDifferentiation <- function(p1,p2,alpha=0.05)
 {
-
 	if (p1<0 | p1>1 | p2<0 | p2>1) { stop("Probabilities need to be between zero and one.") }
 	if (p1==p2) 
 	{ 
@@ -71,19 +68,13 @@ observationsRequiredForBinomialDifferentiation <- function(p1,p2,alpha=0.05)
 			n <- n + 1 
 			print(paste(n,(1-pbinom(floor(pb*n),n,pa)),sep=" : "))
 		}
-=======
-observationsRequiredForBinomialDifferentiation <- function(p1,p2,alpha=0.05)
-{
-	if (p1==p2) { stop("Probabilities need to be different.") }
-	if (p1<0 | p1>1 | p2<0 | p2>1) { stop("Probabilities need to be between zero and one.") }
-	pa <- min(p1,p2)
-	pb <- max(p1,p2)
-	n <- 1
-	while ((1-pbinom(floor(pb*n),n,pa))>alpha) 
-	{ 
-		n <- n + 1 
-		print(paste(n,(1-pbinom(floor(pb*n),n,pa)),sep=" : "))
->>>>>>> 3556c44c3bf7db11cb299cc3d4b03a6866f396b7
 	}
 	n
+}
+
+rmLike <- function(expression)
+{
+	print("Removing...")
+	print(ls(pattern=expression))
+	rm(list=ls(pattern=expression))
 }
