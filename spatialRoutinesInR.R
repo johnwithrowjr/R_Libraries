@@ -344,7 +344,11 @@ analysisFirstOrder <- function(x,rstX,rstLocations,params,polys)
 {
 	x <- x[complete.cases(x),]
 	header <- list(length(params))
+	N <- list(length(params))
+	nI <- list(length(params))
+	nNotI <- list(length(params))
 	pI <- list(length(params))
+	pNotI <- list(length(params))
 	pX <- list(length(params))
 	analyses <- list(length(polys))
 	samplesizes <- list(length(polys))
@@ -356,12 +360,16 @@ analysisFirstOrder <- function(x,rstX,rstLocations,params,polys)
 		header[[i]] <- histogramBreaksSturges(x[,params[i]],length(x[,params[i]]))
 		pX[[i]] <- hist(rstX@data[!is.na(rstX@data) & rstX@data>header[[i]]$xMin & rstX@data<header[[i]]$xMax],breaks=(c(header[[i]]$bins[1,1],header[[i]]$bins[,2])),plot=FALSE)$density
 		isWithinRange <- !is.na(rstX@data) & rstX@data>header[[i]]$xMin & rstX@data<header[[i]]$xMax
-		pI[[i]] <- length(rstLocations@data[!is.na(rstLocations@data) & isWithinRange]) / length(rstLocations@data[isWithinRange])
+		nI[[i]] <- length(rstLocations@data[!is.na(rstLocations@data) & isWithinRange])
+		N[[i]] <- length(rstLocations@data[isWithinRange])
+		nNotI[[i]] <- N[[i]] - nI[[i]]
+		pI[[i]] <- nI[[i]]/N[[i]]
+		pNotI[[i]] <- 1 - pI[[i]]
 	}
 	for (j in 1:length(polys))
 	{
 		buildTable <- matrix(nrow=0,ncol=16)
-		colnames(buildTable) <- c("XMid","Successes","Failures","PmaxL(I|X)","Pmean(I|X)","P95-(I|X)","P95+(I|X)","P99-(I|X)","P99+(I|X)","P(X)","PmaxL(X|I)","Pmean(X|I)","P95-(X|I)","P95+(X|I)","P99-(X|I)","P99+(X|I)")
+		colnames(buildTable) <- c("XMid","Successes","Failures","PmaxL(X|I)","Pmean(X|I)","P95-(X|I)","P95+(X|I)","P99-(X|I)","P99+(X|I)","Successes","Failures","PmaxL(X|-I)","Pmean(X|-I)","P95-(X|-I)","P95+(X|-I)","P99-(X|-I)","P99+(X|-I)","P(I|X)")
 		for (i in 1:length(params))
 		{
 			for (k in 1:header[[i]]$nBins)
@@ -369,19 +377,37 @@ analysisFirstOrder <- function(x,rstX,rstLocations,params,polys)
 				ss <- x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==1),]
 				if (is.matrix(ss))
 				{
-					s <- dim(ss)[1]
+					nXI <- dim(ss)[1]
 				} else {
-					s <- 1
+					nXI <- 1
 				}
-				ff <- x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==0),]
-				if (is.matrix(ff))
+				ss <- x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==0),]
+				if (is.matrix(ss))
 				{
-					f <- dim(ff)[1]
+					nXnotI <- dim(ss)[1]
 				} else {
-					f <- 1
+					nXnotI <- 1
 				}
-				#print(header[[i]]$bins[k,1])
-				buildTable <- rbind(buildTable,c(header[[i]]$bins[k,3],s,f,betaSuccessMode(s,f),betaSuccessMean(s,f),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),s,f),pX[[i]][k],betaSuccessMode(s,f)*pX[[i]][k]/pI[[i]],betaSuccessMean(s,f)*pX[[i]][k]/pI[[i]],betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),s,f)*pX[[i]][k]/pI[[i]]))
+				ss <- x[((x[,params[i]]<header[[i]]$bins[k,1] | x[,params[i]]>=header[[i]]$bins[k,2]) & x[,polys[j]]==1),]
+				if (is.matrix(ss))
+				{
+					nnotXI <- dim(ss)[1]
+				} else {
+					nnotXI <- 1
+				}
+				ss <- x[((x[,params[i]]<header[[i]]$bins[k,1] | x[,params[i]]>=header[[i]]$bins[k,2]) & x[,polys[j]]==0),]
+				if (is.matrix(ss))
+				{
+					nnotXnotI <- dim(ss)[1]
+				} else {
+					nnotXnotI <- 1
+				}
+				pXgivenI <- betaSuccessMean(nXI,nnotXI)
+				pI <- betaSuccessMean(nI[[i]],nnotI[[i]])
+				pXgivennotI <- betaSuccessMean(nXnotI,nnotXnotI)
+				pnotI <- 1 - pI
+				pIgivenX <- pXgivenI*pI/(pXgivenI*pI+pXgivennotI*pnotI)
+				buildTable <- rbind(buildTable,c(header[[i]]$bins[k,3],nXI,nnotXI,betaSuccessMode(nXI,nnotXI),betaSuccessMean(nXI,nnotXI),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),nXI,nnotXI),nXnotI,nnotXnotI,betaSuccessMode(nXnotI,nnotXnotI),betaSuccessMean(nXnotI,nnotXnotI),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),nXnotI,nnotXnotI),pIgivenX))
 			}
 		}
 		analyses[[j]] <- buildTable
