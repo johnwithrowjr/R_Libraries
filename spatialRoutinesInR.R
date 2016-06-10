@@ -1,4 +1,5 @@
 library(sp)
+library(rgdal)
 library(raster)
 dist <- function(x1,y1,x2,y2) {sqrt((x1-x2)^2+(y1-y2)^2)}
 pointInPolygon <- function(x,y,plgX)
@@ -9,14 +10,15 @@ pointInPolygon <- function(x,y,plgX)
 		for (j in 1:length(plgX@polygons[[i]]@Polygons))
 		{
 			crds <- plgX@polygons[[i]]@Polygons[[j]]@coords
-			result <- result + point.in.polygon(x,y,crds[,1],crds[,2])
+			if (!(plgX@polygons[[i]]@Polygons[[j]]@hole)) { result <- result + point.in.polygon(x,y,crds[,1],crds[,2]) }
 		}
 	}
 	#print (result)
 	result
 }
-generateSamplePointsInPolygonWithMinDistance <- function(numPts,outerPolygon,minDistance=0,maxIter=10000,rstAssist=NULL)
+generateSamplePointsInPolygonWithMinDistance <- function(numPts,outerPolygon,minDistance=0,maxIter=10000,seed=NULL)
 {
+	if (!is.null(seed)) {set.seed(seed)}
 	numIter <- 0
 	samplepoints.x <- numeric(0)
 	samplepoints.y <- numeric(0)
@@ -85,16 +87,17 @@ generateSamplePointsWithORSBalanceAndMinDistance <- function(numPtsTotal,rstORS,
   result
 }
 
-generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,rstLocations,plgOuter,rstGuide,propInLocations=0.5,minDistance=0,maxIter=10000)
+generateSamplePointsInStratifiedLocationsWithMinDistance <- function(numPtsTotal,rstLocations,plgOuter,minDistance=0,maxIter=10000)
 {
 	#rstTemp <- as(calc(stack(rstLocations,as(rstGuide,"RasterLayer")),fun=function(x){x[1]*x[2]}),"SpatialGridDataFrame")
 	#rstGuide <- as(rstGuide,"SpatialGridDataFrame")
 	#dfGuide <- rstGuide@data[[1]][!is.na(rstGuide@data[[1]])]
 	print("Converting to a List of Points...")
 	dfLocationsPts <- cbind(coordinates(rstLocations),!is.na(rstLocations@data[[1]]))
-	#print(dfLocations)
+	print(dfLocationsPts)
 	dfLocationsPtsInside <- dfLocationsPts[dfLocationsPts[,3]==1,1:2]
 	dfLocationsPtsOutside <- dfLocationsPts[dfLocationsPts[,3]==0,1:2]
+	print(dfLocationsPtsInside)
 	print("Randomizing...")
 	dfLocationsPtsInside <- dfLocationsPtsInside[sample(1:dim(dfLocationsPtsInside)[1]),]
 	dfLocationsPtsOutside <- dfLocationsPtsOutside[sample(1:dim(dfLocationsPtsOutside)[1]),]
@@ -134,6 +137,7 @@ generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,r
 				if (isDivisibleBy(length(samplepoints.x),100)) {print (paste("numIter = ",numIter,", numPts = ",length(samplepoints.x)," x=",x," y=",y,sep=""))}
 			}
 		}
+		#print(paste(length(samplepoints.x),numPts,sep=" : "))
 	}
 	numIter <- 0
 	m <- sample(1:dim(dfLocationsPtsOutside)[1])
@@ -172,6 +176,20 @@ generateSamplePointsInIsolatedLocationsWithMinDistance <- function(numPtsTotal,r
 	colnames(result) <- c("x","y","z")
 	#pI <- (dim(dfLocationsPtsInside[,])[1])/(dim(dfLocationsPtsInside)[1]+dim(dfLocationsPtsOutside)[1])
 	result
+}
+
+exportSamplePoints <- function(workspace,fn,analObj,projObj)
+{
+	pts <- analObj$x
+	dimnames(pts)[[1]] <- seq(1,dim(pts)[1])
+	pts <- as.data.frame(pts)
+	temp <- SpatialPointsDataFrame(pts[,1:2],data=pts,proj4string=CRS(proj4string(projObj)))
+	#coordinates(temp) <- pts[,1:2]
+	#temp <- SpatialPointsDataFrame(pts[,c(1,2)],pts[,3])
+	#print("Got this far")
+	#proj4string(temp) <- proj4string(projObj)
+	#print("got this far")
+	writeOGR(obj=temp,dsn=paste(workspace,fn,".shp",sep=""),layer=fn,driver="ESRI Shapefile")
 }
 
 sampleVariogramOfRaster <- function(rstX, maxDistance, numBreaks, maxIter = 10000)
@@ -340,7 +358,7 @@ addPolygon <- function(x,plgX,plgName)
 	result
 }
 
-analysisFirstOrder <- function(x,rstX,rstLocations,params,polys)
+analysisFirstOrderOld <- function(x,rstX,rstLocations,params,polys)
 {
 	x <- x[complete.cases(x),]
 	header <- list(length(params))
@@ -349,90 +367,228 @@ analysisFirstOrder <- function(x,rstX,rstLocations,params,polys)
 	nNotI <- list(length(params))
 	pI <- list(length(params))
 	pNotI <- list(length(params))
-	pX <- list(length(params))
-	analyses <- list(length(polys))
+	probabilities <- list(length(polys))
+	roc <- list(length(polys))
 	samplesizes <- list(length(polys))
+	optMax <- list(length(polys))
+	optPt <- list(length(polys))
+	optMtx <- list(length(polys))
+	kappa <- list(length(polys))
 	names(header) <- colnames(x[,params])
-	names(analyses) <- colnames(x[,polys])
+	names(probabilities) <- colnames(x[,polys])
+	names(roc) <- colnames(x[,polys])
 	for (i in 1:length(header))
 	{
-		#header[[i]] <- histogramBreaksSturges(rstX@data[!is.na(rstX@data)],length(x[,params[i]]))
 		header[[i]] <- histogramBreaksSturges(x[,params[i]],length(x[,params[i]]))
-		pX[[i]] <- hist(rstX@data[!is.na(rstX@data) & rstX@data>header[[i]]$xMin & rstX@data<header[[i]]$xMax],breaks=(c(header[[i]]$bins[1,1],header[[i]]$bins[,2])),plot=FALSE)$density
 		isWithinRange <- !is.na(rstX@data) & rstX@data>header[[i]]$xMin & rstX@data<header[[i]]$xMax
 		nI[[i]] <- length(rstLocations@data[!is.na(rstLocations@data) & isWithinRange])
 		N[[i]] <- length(rstLocations@data[isWithinRange])
 		nNotI[[i]] <- N[[i]] - nI[[i]]
-		pI[[i]] <- nI[[i]]/N[[i]]
+		pI[[i]] <- nI[[i]] / N[[i]]
 		pNotI[[i]] <- 1 - pI[[i]]
 	}
 	for (j in 1:length(polys))
 	{
-		buildTable <- matrix(nrow=0,ncol=16)
-		colnames(buildTable) <- c("XMid","Successes","Failures","PmaxL(X|I)","Pmean(X|I)","P95-(X|I)","P95+(X|I)","P99-(X|I)","P99+(X|I)","Successes","Failures","PmaxL(X|-I)","Pmean(X|-I)","P95-(X|-I)","P95+(X|-I)","P99-(X|-I)","P99+(X|-I)","P(I|X)")
 		for (i in 1:length(params))
 		{
+			buildTable <- matrix(nrow=0,ncol=12)
+			colnames(buildTable) <- c("Xmin","XMid","Xmax","nXI","nnotXI","Pmean(X|I)","p(I)","nXnotI","nnotXnotI","Pmean(X|-I)","P(-I)","P(I|X)")
 			for (k in 1:header[[i]]$nBins)
 			{
-				ss <- x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==1),]
-				if (is.matrix(ss))
-				{
-					nXI <- dim(ss)[1]
-				} else {
-					nXI <- 1
-				}
-				ss <- x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==0),]
-				if (is.matrix(ss))
-				{
-					nXnotI <- dim(ss)[1]
-				} else {
-					nXnotI <- 1
-				}
-				ss <- x[((x[,params[i]]<header[[i]]$bins[k,1] | x[,params[i]]>=header[[i]]$bins[k,2]) & x[,polys[j]]==1),]
-				if (is.matrix(ss))
-				{
-					nnotXI <- dim(ss)[1]
-				} else {
-					nnotXI <- 1
-				}
-				ss <- x[((x[,params[i]]<header[[i]]$bins[k,1] | x[,params[i]]>=header[[i]]$bins[k,2]) & x[,polys[j]]==0),]
-				if (is.matrix(ss))
-				{
-					nnotXnotI <- dim(ss)[1]
-				} else {
-					nnotXnotI <- 1
-				}
+				nXI       <- numRows(x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==1),])
+				nnotXI    <- numRows(x[((x[,params[i]]<header[[i]]$bins[k,1] | x[,params[i]]>=header[[i]]$bins[k,2]) & x[,polys[j]]==1),])
+				nXnotI    <- numRows(x[(x[,params[i]]>=header[[i]]$bins[k,1] & x[,params[i]]<header[[i]]$bins[k,2] & x[,polys[j]]==0),])
+				nnotXnotI <- numRows(x[((x[,params[i]]<header[[i]]$bins[k,1] | x[,params[i]]>=header[[i]]$bins[k,2]) & x[,polys[j]]==0),])
 				pXgivenI <- betaSuccessMean(nXI,nnotXI)
-				pI <- betaSuccessMean(nI[[i]],nnotI[[i]])
+				#pI <- betaSuccessMean(nI[[i]],nNotI[[i]])
 				pXgivennotI <- betaSuccessMean(nXnotI,nnotXnotI)
-				pnotI <- 1 - pI
-				pIgivenX <- pXgivenI*pI/(pXgivenI*pI+pXgivennotI*pnotI)
-				buildTable <- rbind(buildTable,c(header[[i]]$bins[k,3],nXI,nnotXI,betaSuccessMode(nXI,nnotXI),betaSuccessMean(nXI,nnotXI),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),nXI,nnotXI),nXnotI,nnotXnotI,betaSuccessMode(nXnotI,nnotXnotI),betaSuccessMean(nXnotI,nnotXnotI),betaSuccessQuantiles(c(0.025,0.975,0.005,0.995),nXnotI,nnotXnotI),pIgivenX))
+				#pnotI <- 1 - pI
+				pIgivenX <- pXgivenI*pI[[i]]/(pXgivenI*pI[[i]]+pXgivennotI*pNotI[[i]])
+				buildTable <- rbind(buildTable,c(header[[i]]$bins[k,1],header[[i]]$bins[k,3],header[[i]]$bins[k,2],nXI,nnotXI,pXgivenI,pI[[i]],nXnotI,nnotXnotI,pXgivennotI,pNotI[[i]],pIgivenX))
 			}
-		}
-		analyses[[j]] <- buildTable
-		plot(buildTable[,1],buildTable[,5],ylim=c(0,1),xlab="ORS Value",ylab="Proportion of Samples in IDS Polygons")
-		lines(buildTable[,1],buildTable[,5])
-		lines(buildTable[,1],buildTable[,6],lty=2)
-		lines(buildTable[,1],buildTable[,7],lty=2)
-		lines(buildTable[,1],buildTable[,8],lty=3)
-		lines(buildTable[,1],buildTable[,9],lty=3)
-		title("ORS / IDS Comparison Results")
-		n <- as.matrix(rep(0,dim(buildTable)[1]^2))
-		dim(n) <- c(dim(buildTable)[1],dim(buildTable)[1])
-		for (p in 1:(dim(n)[1]-1))
-		{
-			for (q in (p+1):(dim(n)[1]))
+
+			np <- 1000
+			dx <- (header[[i]]$xMax - header[[i]]$xMin) / np
+			xMin <- header[[i]]$xMin
+			buildTable2 <- matrix(nrow=0,ncol=3)
+			colnames(buildTable2) <- c("x","tp","fp")
+			optMax <- 0
+			optPt <- 0
+			for (p in 1:np)
 			{
-				n[p,q] <- observationsRequiredForBinomialDifferentiation(buildTable[p,5],buildTable[q,5],0.05)
+				Xstar <- xMin + dx*p
+				print(Xstar)
+				nXI       <- numRows(x[x[,params[i]]<Xstar & x[,polys[j]]==1,])
+				nnotXI    <- numRows(x[x[,params[i]]>=Xstar & x[,polys[j]]==1,])
+				nXnotI    <- numRows(x[x[,params[i]]<Xstar & x[,polys[j]]==0,])
+				nnotXnotI <- numRows(x[x[,params[i]]>=Xstar & x[,polys[j]]==0,])
+				nXI_nI <- nXI/numRows(x[x[,polys[j]]==1,])
+				nXnotI_nnotI <- nXnotI/numRows(x[x[,polys[j]]==0,])
+				ss <- nXI_nI + (1 - nXnotI_nnotI)
+				if (ss > optMax) { optMax <- ss ; optPt <- Xstar ; fnXI <- nXI ; fnnotXI <- nnotXI ; fnXnotI <- nXnotI ; fnnotXnotI <- nnotXnotI }
+				buildTable2 <- rbind(buildTable2,c(Xstar,nXI_nI,nXnotI_nnotI))
+			}
+			buildTable3 <- unique(buildTable2[,c(3,2)])
+			print(buildTable3)
+			AUC <- 0
+			np <- dim(buildTable3)[1]
+			if (buildTable3[1,1] > 0) { AUC <- AUC + buildTable3[1,2]*(buildTable3[1,1])/2 }
+			for (p in 2:(np-1))
+			{
+				AUC <- AUC + buildTable3[p,2]*(buildTable3[p+1,1]-buildTable3[p-1,1])/2
+			}
+			if (buildTable3[np,1] > 0) { AUC <- AUC + buildTable3[np,2]*(1-buildTable3[np,1])/2 }
+		}
+		probabilities[[i]] <- buildTable
+		roc[[i]] <- buildTable2
+		optMax[[i]] <- optMax
+		optPt[[i]] <- optPt
+		optMtx[[i]] <- as.matrix(c(fnXI/N[[i]],fnnotXI/N[[i]],fnXnotI/N[[i]],fnnotXnotI/N[[i]]),nrow=2)
+		pX <- fnXI/(fnXI+fnnotXI)*pI[[i]] + fnXnotI/(fnXnotI+fnnotXnotI)*(1-pI[[i]])
+		pO <- (fnXI/N[[i]])*pI[[i]] + (fnnotXnotI/N[[i]])*(1-pI[[i]])
+		pE <- pX*pI[[i]] + (1-pX)*(1-pI[[i]])
+		kappa[[i]] <- (pO-pE)/(1-pE)
+		samplesizes <- as.matrix(rep(0,dim(buildTable)[1]^2))
+		dim(samplesizes) <- c(dim(buildTable)[1],dim(buildTable)[1])
+		for (p in 1:(dim(samplesizes)[1]-1))
+		{
+			print(paste(p,dim(samplesizes)[1],sep=" "))
+			for (q in (p+1):(dim(samplesizes)[1]))
+			{
+				samplesizes[p,q] <- observationsRequiredForBinomialDifferentiation(buildTable[p,12],buildTable[q,12],0.05)
 			}
 		}
-		samplesizes[[j]] <- n
 	}
-	list(x=x,pI=pI,header=header,pX=pX,analyses=analyses,samplesizes=samplesizes)
+	list(x=x,pI=pI,header=header,probabilities=probabilities,roc=roc,AUC=AUC,optMax=optMax,optPt=optPt,optMtx=optMtx,kappa=kappa,samplesizes=samplesizes,buildTable2=buildTable2)
 }
 
-fullAnalysis <- function(plgOuterFn,plgOuterFnShort,numSamplePoints,minDistance,propInLocations=0.5,rstXFn,plgDisturbanceFn,plgDisturbanceFnShort)
+analysisFirstOrder <- function(x,rstX,rstLocations,param,poly)
+{
+	x <- x[complete.cases(x),]
+	x <- as.matrix(x)
+	x[,param] <- as.numeric(x[,param])
+	x[,poly] <- as.numeric(x[,poly])
+	header <- histogramBreaksSturges(x[,param],length(x[,param]))
+	isWithinRange <- !is.na(rstX@data) & rstX@data>header$xMin & rstX@data<header$xMax
+	nI <- length(rstLocations@data[!is.na(rstLocations@data) & isWithinRange])
+	N <- length(rstLocations@data[isWithinRange])
+	nNotI <- N - nI
+	pI <- nI / N
+	pNotI <- 1 - pI
+	buildTable <- matrix(nrow=0,ncol=12)
+	colnames(buildTable) <- c("Xmin","XMid","Xmax","nXI","nnotXI","Pmean(X|I)","p(I)","nXnotI","nnotXnotI","Pmean(X|-I)","P(-I)","P(I|X)")
+	for (k in 1:header$nBins)
+	{
+		nXI       <- numRows(x[(x[,param]>=header$bins[k,1] & x[,param]<header$bins[k,2] & x[,poly]==1),])
+		nnotXI    <- numRows(x[((x[,param]<header$bins[k,1] | x[,param]>=header$bins[k,2]) & x[,poly]==1),])
+		nXnotI    <- numRows(x[(x[,param]>=header$bins[k,1] & x[,param]<header$bins[k,2] & x[,poly]==0),])
+		nnotXnotI <- numRows(x[((x[,param]<header$bins[k,1] | x[,param]>=header$bins[k,2]) & x[,poly]==0),])
+		pXgivenI <- betaSuccessMean(nXI,nnotXI)
+		pXgivennotI <- betaSuccessMean(nXnotI,nnotXnotI)
+		pIgivenX <- pXgivenI*pI/(pXgivenI*pI+pXgivennotI*pNotI)
+		buildTable <- rbind(buildTable,c(header$bins[k,1],header$bins[k,3],header$bins[k,2],nXI,nnotXI,pXgivenI,pI,nXnotI,nnotXnotI,pXgivennotI,pNotI,pIgivenX))
+	}
+	np <- 1000
+	dx <- (header$xMax - header$xMin) / np
+	xMin <- header$xMin
+	buildTable2 <- matrix(nrow=0,ncol=3)
+	colnames(buildTable2) <- c("x","tp","fp")
+	optMax <- 0
+	optPt <- 0
+	for (p in 1:np)
+	{
+		Xstar <- xMin + dx*p
+		print(Xstar)
+		nXI       <- numRows(x[x[,param]<Xstar & x[,poly]==1,])
+		nnotXI    <- numRows(x[x[,param]>=Xstar & x[,poly]==1,])
+		nXnotI    <- numRows(x[x[,param]<Xstar & x[,poly]==0,])
+		nnotXnotI <- numRows(x[x[,param]>=Xstar & x[,poly]==0,])
+		nXI_nI <- nXI/numRows(x[x[,poly]==1,])
+		nXnotI_nnotI <- nXnotI/numRows(x[x[,poly]==0,])
+		ss <- nXI_nI + (1 - nXnotI_nnotI)
+		if (ss > optMax) { optMax <- ss ; optPt <- Xstar ; fnXI <- nXI ; fnnotXI <- nnotXI ; fnXnotI <- nXnotI ; fnnotXnotI <- nnotXnotI }
+		buildTable2 <- rbind(buildTable2,c(Xstar,nXI_nI,nXnotI_nnotI))
+		print(paste(Xstar,nXI_nI,nXnotI_nnotI,sep=" : "))
+	}
+	buildTable3 <- unique(buildTable2[,c(3,2)])
+	print(buildTable3)
+	AUC <- 0
+	np <- dim(buildTable3)[1]
+	if (buildTable3[1,1] > 0) { AUC <- AUC + buildTable3[1,2]*(buildTable3[1,1])/2 }
+	for (p in 2:(np-1)) { AUC <- AUC + buildTable3[p,2]*(buildTable3[p+1,1]-buildTable3[p-1,1])/2 }
+	if (buildTable3[np,1] > 0) { AUC <- AUC + buildTable3[np,2]*(1-buildTable3[np,1])/2 }
+	probabilities <- buildTable
+	roc <- buildTable2
+	optMax <- optMax
+	optPt <- optPt
+	optMtx <- as.matrix(c(fnXI/N,fnnotXI/N,fnXnotI/N,fnnotXnotI/N),nrow=2)
+	pX <- fnXI/(fnXI+fnnotXI)*pI + fnXnotI/(fnXnotI+fnnotXnotI)*(1-pI)
+	pO <- (fnXI/N)*pI + (fnnotXnotI/N)*(1-pI)
+	pE <- pX*pI + (1-pX)*(1-pI)
+	kappa <- (pO-pE)/(1-pE)
+	samplesizes <- as.matrix(rep(0,dim(buildTable)[1]^2))
+	dim(samplesizes) <- c(dim(buildTable)[1],dim(buildTable)[1])
+	for (p in 1:(dim(samplesizes)[1]-1))
+	{
+		print(paste(p,dim(samplesizes)[1],sep=" "))
+		for (q in (p+1):(dim(samplesizes)[1]))
+		{
+			samplesizes[p,q] <- observationsRequiredForBinomialDifferentiation(buildTable[p,12],buildTable[q,12],0.05)
+		}
+	}
+	list(x=x,pI=pI,header=header,probabilities=probabilities,roc=roc,AUC=AUC,optMax=optMax,optPt=optPt,optMtx=optMtx,kappa=kappa,samplesizes=samplesizes,buildTable2=buildTable2)
+}
+
+plotROC <- function(analysis,lblTitle="ROC Curve")
+{
+	plot(analysis$roc[,3],analysis$roc[,2],xlab="False Positives",ylab="True Positives",main=lblTitle)
+	abline(0,1)
+	text(.8,.2,paste("AUC=",analysis$AUC,sep=""))
+}
+
+plotROC2 <- function(analysis,lblTitle="ROC Curve")
+{
+	plot(analysis$roc[[1]][,3],analysis$roc[[1]][,2],xlab="False Positives",ylab="True Positives",main=lblTitle)
+	abline(0,1)
+	text(.8,.2,paste("AUC=",analysis$AUC[[1]],sep=""))
+}
+
+plotProbabilities <- function(analysis,lblX="ORS Value",lblY="Proportion of Samples in IDS Polygons",lblTitle="ORS / IDS Comparison Results")
+{
+	plot(analysis$probabilities[[1]][,1],analysis$probabilities[[1]][,12],ylim=c(0,1),xlab=lblX,ylab=lblY)
+	lines(analysis$probabilities[[1]][,1],analysis$probabilities[[1]][,12])
+	title(lblTitle)
+}
+
+plotProbabilities2 <- function(analysis,lblX="ORS Value",lblY="Proportion of Samples in IDS Polygons",lblTitle="ORS / IDS Comparison Results")
+{
+	plot(analysis$probabilities[,1],analysis$probabilities[,12],ylim=c(0,1),xlab=lblX,ylab=lblY)
+	lines(analysis$probabilities[,1],analysis$probabilities[,12])
+	title(lblTitle)
+}
+
+createMask <- function(rstX)
+{
+	rstY <- raster(rstX,layer=1,values=TRUE)
+	rstY <- as(rstY,"SpatialGridDataFrame")
+	for (i in 1:length(rstX@data))
+	{
+		if (!is.na(rstX@data[i,1]))
+		{
+			if (rstX@data[i,1] > 0)
+			{
+				rstY@data[i,1] <- 1
+			} else {
+				rstY@data[i,1] <- 0
+			}
+		} else {
+			rstY@data[i,1] <- 0
+		}
+	}
+	rstY
+}
+
+fullAnalysis <- function(plgOuterFn,plgOuterFnShort,numSamplePoints,minDistance,rstXFn,plgDisturbanceFn,plgDisturbanceFnShort)
 {
 	print("Reading in Outer Polygons...")
 	plgOuter <- readOGR(plgOuterFn,plgOuterFnShort)
@@ -443,9 +599,14 @@ fullAnalysis <- function(plgOuterFn,plgOuterFnShort,numSamplePoints,minDistance,
 	rstX <- as(rstX,"SpatialGridDataFrame")
 	print("Creating Rasterized Polygons...")
 	rstDisturbance <- raster(rstX,layer=1,values=FALSE)
+	rstOuter <- raster(rstX,layer=1,values=FALSE)
 	rstDisturbance <- rasterize(plgDisturbance,rstDisturbance,colnames(plgDisturbance@data)[1])
 	rstDisturbance <- as(rstDisturbance,"SpatialGridDataFrame")
-	samplePts <- generateSamplePointsInIsolatedLocationsWithMinDistance(numSamplePoints,rstDisturbance,plgOuter,rstX,propInLocations,minDistance,1000000)
+	rstOuter <- rasterize(plgOuter,rstOuter,colnames(plgOuter@data)[1])
+	rstOuter <- as(rstOuter,"SpatialGridDataFrame")
+	rstOuter <- createMask(rstOuter)
+	#rstDisturbance@data <- as.data.frame(as.vector(rstOuter@data[,1]) * as.vector(rstDisturbance@data[,1]))
+	samplePts <- generateSamplePointsInStratifiedLocationsWithMinDistance(numSamplePoints,rstDisturbance,plgOuter,minDistance,1000000)
 	samplePts <- cbind(samplePts,valuesOfRasterAtPoints(rstX,samplePts))
 	colnames(samplePts)[4] <- "rstX"
  	analysisFirstOrder(samplePts,rstX,rstDisturbance,4,3)
